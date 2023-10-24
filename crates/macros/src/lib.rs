@@ -76,10 +76,11 @@ pub fn php_function(args: TokenStream, input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_attribute]
-pub fn php_module(_: TokenStream, input: TokenStream) -> TokenStream {
+pub fn php_module(args: TokenStream, input: TokenStream) -> TokenStream {
+    let args = parse_macro_input!(args as AttributeArgs);
     let input = parse_macro_input!(input as ItemFn);
 
-    match module::parser(input) {
+    match module::parser(args, input) {
         Ok(parsed) => parsed,
         Err(e) => syn::Error::new(Span::call_site(), e).to_compile_error(),
     }

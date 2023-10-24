@@ -1,9 +1,20 @@
+use std::collections::HashMap;
 use std::sync::MutexGuard;
 
 use anyhow::{anyhow, bail, Result};
+use darling::FromMeta;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
-use syn::{ItemFn, Signature, Type};
+use syn::{AttributeArgs, ItemFn, Lit, Signature, Type};
+
+#[derive(Default, Debug, FromMeta)]
+#[darling(default)]
+pub struct AttrArgs {
+    optional: Option<String>,
+    ignore_module: bool,
+    defaults: HashMap<String, Lit>,
+    name: Option<String>,
+}
 
 use crate::{
     class::{Class, Property},
@@ -11,10 +22,17 @@ use crate::{
     startup_function, State, STATE,
 };
 
-pub fn parser(input: ItemFn) -> Result<TokenStream> {
+pub fn parser(args: AttributeArgs, input: ItemFn) -> Result<TokenStream> {
+    let attr_args = match AttrArgs::from_list(&args) {
+        Ok(args) => args,
+        Err(e) => bail!("Unable to parse attribute arguments: {:?}", e),
+    };
     let ItemFn { sig, block, .. } = input;
-    let Signature { output, inputs, .. } = sig;
+    let Signature { ident, output, inputs, .. } = sig;
     let stmts = &block.stmts;
+    let name = attr_args.name.unwrap_or_else(|| ident.to_string());
+    let name_ident = Ident::new(&name, Span::call_site());
+    let name_ident_upper = Ident::new(&name.to_uppercase(), Span::call_site());
 
     let mut state = STATE.lock();
 
@@ -67,29 +85,41 @@ pub fn parser(input: ItemFn) -> Result<TokenStream> {
 
         #[doc(hidden)]
         #[no_mangle]
-        pub extern "C" fn get_module() -> *mut ::ext_php_rs::zend::ModuleEntry {
-            fn internal(#inputs) #output {
-                #(#stmts)*
-            }
-
-            let mut builder = ::ext_php_rs::builders::ModuleBuilder::new(
-                env!("CARGO_PKG_NAME"),
-                env!("CARGO_PKG_VERSION")
-            )
-            #startup
-            #(.function(#functions.unwrap()))*
-            ;
-
-            // TODO allow result return types
-            let builder = internal(builder);
-
-            match builder.build() {
-                Ok(module) => module.into_raw(),
-                Err(e) => panic!("Failed to build PHP module: {:?}", e),
-            }
+        #[cfg(lib)]
+        pub unsafe extern "C" fn get_module() -> *mut ::ext_php_rs::zend::ModuleEntry {
+            return &mut #name_ident_upper ;
         }
 
         #describe_fn
+
+        #[doc(hidden)]
+        #[no_mangle]
+        pub static mut #name_ident_upper : ::ext_php_rs::zend::ModuleEntry = ::ext_php_rs::zend::ModuleEntry {
+            size: ::std::mem::size_of::<::ext_php_rs::zend::ModuleEntry>() as u16,
+            zend_api: 0,
+            zend_debug: 0,
+            zts: 0,
+            ini_entry: ::std::ptr::null(),
+            deps: ::std::ptr::null(),
+            name: ::std::ptr::null(),
+            functions: ::std::ptr::null(),
+            module_startup_func: None,
+            module_shutdown_func: None,
+            request_startup_func: None,
+            request_shutdown_func: None,
+            info_func: None,
+            version: ::std::ptr::null(),
+            globals_size: 0,
+            globals_ptr: ::std::ptr::null_mut(),
+            globals_ctor: None,
+            globals_dtor: None,
+            post_deactivate_func: None,
+            module_started: 0,
+            type_: 0,
+            handle: ::std::ptr::null_mut(),
+            module_number: 0,
+            build_id: ::std::ptr::null()
+        };
     };
     Ok(result)
 }

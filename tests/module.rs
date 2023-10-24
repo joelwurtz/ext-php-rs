@@ -4,7 +4,6 @@ extern crate ext_php_rs;
 #[cfg(feature = "embed")]
 use ext_php_rs::embed::Embed;
 #[cfg(feature = "embed")]
-use ext_php_rs::ffi::zend_register_module_ex;
 use ext_php_rs::prelude::*;
 
 #[test]
@@ -12,7 +11,7 @@ use ext_php_rs::prelude::*;
 fn test_module() {
     Embed::run(|| {
         // Allow to load the module
-        unsafe { zend_register_module_ex(get_module()) };
+        //unsafe { zend_register_module_ex(get_module()) };
 
         let result = Embed::eval("$foo = hello_world('foo');");
 
@@ -39,6 +38,7 @@ pub fn hello_world(name: String) -> String {
 }
 
 #[php_module]
-pub fn module(module: ModuleBuilder) -> ModuleBuilder {
+pub fn test_module(module: ModuleBuilder) -> ModuleBuilder {
+
     module
 }
